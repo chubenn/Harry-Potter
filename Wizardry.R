@@ -1,45 +1,58 @@
-devtools::install_github("bradleyboehmke/harrypotter")
-pacman::p_load(tidytext,janitor,quanteda,tidyverse)
-devtools::install_github("kbenoit/quanteda.dictionaries")
-library(quanteda.dictionaries)
-
 library(harrypotter)
-options(max.print = 500)
+library(tidyverse)
+library(tidytext)
+library(quanteda)
+library(textclean)
+library(janitor)
+library(quanteda.dictionaries)
+library(psych)
+library(GPArotation)
+library(MASS) 
+library(tm)
+library(SnowballC)
+stop <- rbind(tibble(text = stopwords("SMART")),"ill","im","yeah","dont","hey","back","lets")
 
-stop <- rbind(tibble(text = stopwords(source = "smart")),"ill","im","yeah","dont","hey","back","lets")
-
+titles <- c("Philosopher's Stone", "Chamber of Secrets", "Prisoner of Azkaban",
+            "Goblet of Fire", "Order of the Phoenix", "Half-Blood Prince",
+            "Deathly Hallows")
 
 books <- list(
-  philosophers_stone = philosophers_stone,
-  chamber_of_secrets = chamber_of_secrets,
-  prisoner_of_azkaban = prisoner_of_azkaban,
-  goblet_of_fire = goblet_of_fire,
-  order_of_the_phoenix = order_of_the_phoenix,
-  half_blood_prince = half_blood_prince,
-  deathly_hallows = deathly_hallows) %>%
+  philosophers_stone,
+  chamber_of_secrets,
+  prisoner_of_azkaban,
+  goblet_of_fire,
+  order_of_the_phoenix,
+  half_blood_prince,
+  deathly_hallows) %>%
   set_names(titles) %>%
-  map_df(as.tibble, .id = "book") %>%
-  mutate(book_factor = factor(book, levels = c("philosophers_stone", "chamber_of_secrets",
-              "prisoner_of_azkaban", "goblet_of_fire",
-              "order_of_the_phoenix", "half_blood_prince",
-              "deathly_hallows"))) %>%   
-  group_by(book) %>%
-  mutate(chapter = row_number(book))
+  map_df(as.tibble, .id = "book_list") %>%
+  mutate(linenumber = row_number(),
+         book_factor = factor(book_list))
+
+books <- books %>%
+  group_by(book_factor) %>%
+  mutate(chapter = row_number()) %>% 
+  filter(!is.na(value)) 
+
+token <- books %>%
+  mutate(text = removePunctuation(value)) %>%
+  unnest_tokens(text,text) %>%
+  anti_join(stop) %>%
+  dplyr::select(-value) %>%
+  group_by(text) %>%
+  count(text,sort = TRUE) %>%
+  filter(n > 3)
 
 
-clean_books <- books %>% 
-  as.tibble() %>%
-  janitor::clean_names() %>%
-  mutate(text = removePunctuation(as.character(value)),
-         work = case_when(book == "philosophers_stone" ~ "Philosophers Stone",
-                           book == "chamber_of_secrets" ~ "Chamber of Secrets",
-                           book == "prisoner_of_azkaban" ~ "Prisoner of Azkaban",
-                           book == "goblet_of_fire" ~ "Goblet of Fire",
-                           book == "order_of_the_phoenix" ~ "Order of the Phoenix",
-                           book == "half_blood_prince" ~ "Half Blood Prince",
-                           book == "deathly_hallows" ~ "Deathly Hallows",
-                           )) %>% 
-  unnest_tokens(text, text) %>%
-  anti_join(stop)
-  
-liwc_book <- liwcalike(clean_books$value, dictionary = data_dictionary_NRC)
+
+liwc_book <- liwcalike(books$value, dictionary = data_dictionary_NRC) %>%
+  mutate(linenumber = row_number())
+
+full_liwc <- inner_join(books, liwc_book)
+
+names(full_liwc)
+
+test_pca <- full_liwc %>%
+  ungroup %>%
+  dplyr::select(-Parenth, -book_list,-value,-linenumber,-book_factor,-chapter,-docname,-Segment)
+
